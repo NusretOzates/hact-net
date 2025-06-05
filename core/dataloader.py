@@ -70,7 +70,7 @@ class BRACSDataset(Dataset):
         self.cg_fnames.sort()
         self.num_cg = len(self.cg_fnames)
         if self.load_in_ram:
-            cell_graphs = [load_graphs(os.path.join(self.cg_path, fname)) for fname in self.cg_fnames]
+            cell_graphs = [load_graphs(fname) for fname in self.cg_fnames]
             self.cell_graphs = [entry[0][0] for entry in cell_graphs]
             self.cell_graph_labels = [entry[1]['label'].item() for entry in cell_graphs]
 
@@ -82,7 +82,7 @@ class BRACSDataset(Dataset):
         self.tg_fnames.sort()
         self.num_tg = len(self.tg_fnames)
         if self.load_in_ram:
-            tissue_graphs = [load_graphs(os.path.join(self.tg_path, fname)) for fname in self.tg_fnames]
+            tissue_graphs = [load_graphs(fname) for fname in self.tg_fnames]
             self.tissue_graphs = [entry[0][0] for entry in tissue_graphs]
             self.tissue_graph_labels = [entry[1]['label'].item() for entry in tissue_graphs]
 
@@ -95,7 +95,7 @@ class BRACSDataset(Dataset):
         self.num_assign_mat = len(self.assign_fnames)
         if self.load_in_ram:
             self.assign_matrices = [
-                h5_to_tensor(os.path.join(self.assign_mat_path, fname)).float().t()
+                h5_to_tensor(fname).float().t()
                     for fname in self.assign_fnames
             ]
 
