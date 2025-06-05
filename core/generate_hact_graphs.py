@@ -1,5 +1,5 @@
 """
-Extract HACT graphs for all the sample in the BRACS dataset.
+Extract HACT graphs for all the sample in the given dataset.
 """
 
 import os
@@ -11,33 +11,49 @@ from tqdm import tqdm
 import torch 
 from dgl.data.utils import save_graphs
 import h5py
+import networkx as nx
+import dgl
 
 from histocartography.preprocessing import (
-    VahadaneStainNormalizer,         # stain normalizer
+    MacenkoStainNormalizer,         # stain normalizer
     NucleiExtractor,                 # nuclei detector 
-    DeepFeatureExtractor,            # feature extractor 
     KNNGraphBuilder,                 # kNN graph builder
     ColorMergedSuperpixelExtractor,  # tissue detector
     DeepFeatureExtractor,            # feature extractor
     RAGGraphBuilder,                 # build graph
     AssignmnentMatrixBuilder         # assignment matrix 
 )
+import matplotlib.pyplot as plt
+
+# Remove warning level logs from dgl and numpy
+import logging
+logging.getLogger("dgl").setLevel(logging.WARNING)
+import warnings
+warnings.filterwarnings("ignore", category=RuntimeWarning, module="numpy")
 
 
-# BRACS subtype to 7-class label 
 TUMOR_TYPE_TO_LABEL = {
-    'N': 0,
-    'PB': 1,
-    'UDH': 2,
-    'ADH': 3,
-    'FEA': 4,
-    'DCIS': 5,
-    'IC': 6
+    "normal": 2,
+    "pannet": 1,
+    "Stroma": 0,
 }
 
 MIN_NR_PIXELS = 50000
 MAX_NR_PIXELS = 50000000  
 STAIN_NORM_TARGET_IMAGE = '../data/target.png'  # define stain normalization target image. 
+
+from hovernet import HoVerNet
+
+class CustomNucleiExtractor(NucleiExtractor):
+    """
+    Fixes the model loading for the NucleiExtractor.
+    """
+    def _load_model_from_path(self, model_path):
+        state_dict = torch.load(model_path, map_location='cpu')
+        model = HoVerNet(mode="fast",nr_types=6)
+        model.load_state_dict(state_dict['desc'])
+
+        self.model = model
 
 
 def parse_arguments():
@@ -63,7 +79,7 @@ class HACTBuilding:
     def __init__(self):
 
         # 1. define stain normalizer 
-        self.normalizer = VahadaneStainNormalizer(target_path=STAIN_NORM_TARGET_IMAGE)
+        self.normalizer = MacenkoStainNormalizer(target_path=STAIN_NORM_TARGET_IMAGE)
 
         # 2. define CG builders
         self._build_cg_builders()
@@ -79,13 +95,13 @@ class HACTBuilding:
 
     def _build_cg_builders(self):
         # a define nuclei extractor
-        self.nuclei_detector = NucleiExtractor()
+        self.nuclei_detector = CustomNucleiExtractor(model_path="../hovernet_fast_pannuke_type_tf2pytorch.tar")
 
         # b define feature extractor: Extract patches of 72x72 pixels around each
         # nucleus centroid, then resize to 224 to match ResNet input size.
         self.nuclei_feature_extractor = DeepFeatureExtractor(
             architecture='resnet34',
-            patch_size=72,
+            patch_size=40,
             resize_size=224
         )
 
@@ -93,7 +109,7 @@ class HACTBuilding:
         # than 50 pixels. Add image size-normalized centroids to the node features.
         # For e.g., resulting node features are 512 features from ResNet34 + 2
         # normalized centroid features.
-        self.knn_graph_builder = KNNGraphBuilder(k=5, thresh=50, add_loc_feats=True)
+        self.knn_graph_builder = KNNGraphBuilder(k=5, thresh=75, add_loc_feats=True)
 
     def _build_tg_builders(self):
         # a define nuclei extractor    
@@ -116,24 +132,48 @@ class HACTBuilding:
         # c define RAG builder. Append normalized centroid to the node features. 
         self.rag_graph_builder = RAGGraphBuilder(add_loc_feats=True)
 
-    def _build_cg(self, image):
+    def _save_nuclei_map(self, nuclei_centroids: np.ndarray, image:np.ndarray, graph:dgl.DGLGraph, image_name: str):
+
+        # Assuming code is running inside "core" directory so we will create the directory relative to that
+        os.makedirs('../nuclei_maps', exist_ok=True)
+
+        nx_graph = graph.to_networkx()
+        positions = {i: (nuclei_centroids[i, 0], nuclei_centroids[i, 1]) for i in range(len(nuclei_centroids))}
+
+        plt.imshow(image, cmap='gray')
+        nx.draw(nx_graph, node_size=2, edge_color='cyan', node_color='blue', with_labels=False, pos=positions,arrowsize=1)
+        plt.title('Nuclei Map for {}'.format(image_name.replace('.jpg', '')))
+        plt.axis('off')
+        plt.tight_layout()
+        plt.savefig(os.path.join('../nuclei_maps', image_name.replace('.jpg', '.png')), dpi=200)
+
+        plt.close()
+
+    def _build_cg(self, image: np.ndarray, image_name: str):
         nuclei_map, nuclei_centroids = self.nuclei_detector.process(image)
+
+        if len(nuclei_centroids) <=3:
+            print('Warning: {} nuclei centroids are too few.'.format(len(nuclei_centroids)))
+            raise ValueError('Too few nuclei centroids.')
+
         features = self.nuclei_feature_extractor.process(image, nuclei_map)
         graph = self.knn_graph_builder.process(nuclei_map, features)
+        self._save_nuclei_map(nuclei_centroids, image,graph, image_name)
+
         return graph, nuclei_centroids
 
-    def _build_tg(self, image):
+    def _build_tg(self, image: np.ndarray):
         superpixels, _ = self.tissue_detector.process(image)
         features = self.tissue_feature_extractor.process(image, superpixels)
         graph = self.rag_graph_builder.process(superpixels, features)
         return graph, superpixels
 
-    def process(self, image_path, save_path, split):
+    def process(self, image_path: str, save_path: str, split: str):
         # 1. get image path
         subdirs = os.listdir(image_path)
         image_fnames = []
         for subdir in (subdirs + ['']):  # look for all the subdirs AND the image path
-            image_fnames += glob(os.path.join(image_path, subdir, '*.png'))
+            image_fnames += glob(os.path.join(image_path, subdir, '*.jpg'))
 
         print('*** Start analysing {} images ***'.format(len(image_fnames)))
 
@@ -143,10 +183,10 @@ class HACTBuilding:
             _, image_name = os.path.split(image_path)
             image = np.array(Image.open(image_path))
             nr_pixels = image.shape[0] * image.shape[1]
-            image_label = TUMOR_TYPE_TO_LABEL[image_name.split('_')[2]]
-            cg_out = os.path.join(save_path, 'cell_graphs', split, image_name.replace('.png', '.bin'))
-            tg_out = os.path.join(save_path, 'tissue_graphs', split, image_name.replace('.png', '.bin'))
-            assign_out = os.path.join(save_path, 'assignment_matrices', split, image_name.replace('.png', '.h5'))
+            image_label = TUMOR_TYPE_TO_LABEL[image_name.split('_')[-3]]
+            cg_out = os.path.join(save_path, 'cell_graphs', split, image_name.replace('.jpg', '.bin'))
+            tg_out = os.path.join(save_path, 'tissue_graphs', split, image_name.replace('.jpg', '.bin'))
+            assign_out = os.path.join(save_path, 'assignment_matrices', split, image_name.replace('.jpg', '.h5'))
 
             # if file was not already created + not too big + not too small, then process 
             if not self._exists(cg_out, tg_out, assign_out) and self._valid_image(nr_pixels):
@@ -160,16 +200,18 @@ class HACTBuilding:
                     pass
 
                 try: 
-                    cell_graph, nuclei_centroid = self._build_cg(image)
+                    cell_graph, nuclei_centroid = self._build_cg(image, image_name)
                     save_graphs(
                         filename=cg_out,
                         g_list=[cell_graph],
                         labels={"label": torch.tensor([image_label])}
                     )
-                except:
+                except Exception as e:
                     print('Warning: {} failed during cell graph generation.'.format(image_path))
+                    # print(e)
+                    # raise e
                     self.image_ids_failing.append(image_path)
-                    pass
+                    continue
 
                 try: 
                     tissue_graph, tissue_map = self._build_tg(image)
@@ -181,7 +223,7 @@ class HACTBuilding:
                 except:
                     print('Warning: {} failed during tissue graph generation.'.format(image_path))
                     self.image_ids_failing.append(image_path)
-                    pass
+                    continue
 
                 try: 
                     assignment_matrix = self.assignment_matrix_builder.process(nuclei_centroid, tissue_map)
@@ -192,9 +234,10 @@ class HACTBuilding:
                             compression="gzip",
                             compression_opts=9,
                         )
-                except:
+                except Exception as e:
                     print('Warning: {} failed during assignment matrix generation.'.format(image_path))
                     self.image_ids_failing.append(image_path)
+                    raise e
                     pass
 
             else:
