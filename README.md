@@ -89,21 +89,21 @@ We provide the option to train 3 types of models, namely a Cell Graph model, Tis
 Training HACTNet as:
 
 ```
-python train.py --cg_path <SOME-SAVE-PATH>/hact-net-data/cell_graphs/ --tg_path <SOME-SAVE-PATH>/hact-net-data/tissue_graphs/ --assign_mat_path <SOME-SAVE-PATH>/hact-net-data/assignment_matrices/  --config_fpath ../data/config/hact_bracs_hactnet_7_classes_pna.yml -b 8 --in_ram --epochs 60 -l 0.0005 
+python train.py --cg_path <SOME-SAVE-PATH>/hact-net-data/cell_graphs/ --tg_path <SOME-SAVE-PATH>/hact-net-data/tissue_graphs/ --assign_mat_path <SOME-SAVE-PATH>/hact-net-data/assignment_matrices/  --config_fpath config/bracs_hact_7_classes_pna.yml  -b 8 --in_ram --epochs 60 -l 0.0005 
 ```
 
 
 Training a Cell Graph model as:
 
 ```
-python train.py --cg_path <SOME-SAVE-PATH>/hact-net-data/cell_graphs/ --config_fpath ../data/config/cg_bracs_cggnn_7_classes_pna.yml -b 8 --in_ram --epochs 60 -l 0.0005 
+python train.py --cg_path <SOME-SAVE-PATH>/hact-net-data/cell_graphs/ --config_fpath config/bracs_cggnn_7_classes_pna.yml  -b 8 --in_ram --epochs 60 -l 0.0005 
 
 ```
 
 Training a Tissue Graph model as:
 
 ```
-python train.py --tg_path <SOME-SAVE-PATH>/hact-net-data/tissue_graphs/ --config_fpath ../data/config/tg_bracs_tggnn_7_classes_pna.yml -b 8 --in_ram --epochs 60 -l 0.0005 
+python train.py --tg_path <SOME-SAVE-PATH>/hact-net-data/tissue_graphs/ --config_fpath config/bracs_tggnn_7_classes_pna.yml  -b 8 --in_ram --epochs 60 -l 0.0005 
 
 ```
 
