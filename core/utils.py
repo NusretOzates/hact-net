@@ -1,15 +1,11 @@
-import math
-import numpy as np
-
 import torch
 import torch.nn.functional as F
-
-from matplotlib import cm
 
 
 ####
 def crop_op(x, cropping, data_format="NCHW"):
-    """Center crop image.
+    """
+    Center crop image.
 
     Args:
         x: input image
@@ -30,16 +26,17 @@ def crop_op(x, cropping, data_format="NCHW"):
 
 ####
 def crop_to_shape(x, y, data_format="NCHW"):
-    """Centre crop x so that x has shape of y. y dims must be smaller than x dims.
+    """
+    Centre crop x so that x has shape of y. y dims must be smaller than x dims.
 
     Args:
         x: input array
         y: array with desired shape.
 
     """
-    assert (
-            y.shape[0] <= x.shape[0] and y.shape[1] <= x.shape[1]
-    ), "Ensure that y dimensions are smaller than x dimensions!"
+    assert y.shape[0] <= x.shape[0] and y.shape[1] <= x.shape[1], (
+        "Ensure that y dimensions are smaller than x dimensions!"
+    )
 
     x_shape = x.size()
     y_shape = y.size()
@@ -52,7 +49,8 @@ def crop_to_shape(x, y, data_format="NCHW"):
 
 ####
 def xentropy_loss(true, pred, reduction="mean"):
-    """Cross entropy loss. Assumes NHWC!
+    """
+    Cross entropy loss. Assumes NHWC!
 
     Args:
         pred: prediction array
@@ -85,7 +83,8 @@ def dice_loss(true, pred, smooth=1e-3):
 
 ####
 def mse_loss(true, pred):
-    """Calculate mean squared error loss.
+    """
+    Calculate mean squared error loss.
 
     Args:
         true: ground truth of combined horizontal
@@ -104,7 +103,8 @@ def mse_loss(true, pred):
 
 ####
 def msge_loss(true, pred, focus):
-    """Calculate the mean squared error of the gradients of
+    """
+    Calculate the mean squared error of the gradients of
     horizontal and vertical map predictions. Assumes
     channel 0 is Vertical and channel 1 is Horizontal.
 
@@ -131,14 +131,14 @@ def msge_loss(true, pred, focus):
             dtype=torch.float32,
             device="cuda",
             requires_grad=False,
-            )
+        )
         v_range = torch.arange(
             -size // 2 + 1,
             size // 2 + 1,
             dtype=torch.float32,
             device="cuda",
             requires_grad=False,
-            )
+        )
         h, v = torch.meshgrid(h_range, v_range)
         kernel_h = h / (h * h + v * v + 1.0e-15)
         kernel_v = v / (h * h + v * v + 1.0e-15)

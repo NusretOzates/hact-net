@@ -1,19 +1,17 @@
-import numpy as np
-import math
-
-import torch
-import torch.nn as nn
-import torch.nn.functional as F
-
 from collections import OrderedDict
 
-from utils import crop_op, crop_to_shape
-#from config import Config
+import numpy as np
+import torch
+import torch.nn.functional as F
+from torch import nn
+from utils import crop_to_shape
+
+# from config import Config
 
 
 ####
 class Net(nn.Module):
-    """ A base class provides a common weight initialisation scheme."""
+    """A base class provides a common weight initialisation scheme."""
 
     def weights_init(self):
         for m in self.modules():
@@ -37,7 +35,8 @@ class Net(nn.Module):
 
 ####
 class TFSamepaddingLayer(nn.Module):
-    """To align with tf `same` padding.
+    """
+    To align with tf `same` padding.
 
     Putting this before any conv layer that need padding
     Assuming kernel has Height == Width for simplicity
@@ -69,7 +68,8 @@ class TFSamepaddingLayer(nn.Module):
 
 ####
 class DenseBlock(Net):
-    """Dense Block as defined in:
+    """
+    Dense Block as defined in:
 
     Huang, Gao, Zhuang Liu, Laurens Van Der Maaten, and Kilian Q. Weinberger.
     "Densely connected convolutional networks." In Proceedings of the IEEE conference
@@ -153,7 +153,8 @@ class DenseBlock(Net):
 
 ####
 class ResidualBlock(Net):
-    """Residual block as defined in:
+    """
+    Residual block as defined in:
 
     He, Kaiming, Xiangyu Zhang, Shaoqing Ren, and Jian Sun. "Deep residual learning
     for image recognition." In Proceedings of the IEEE conference on computer vision
@@ -191,9 +192,7 @@ class ResidualBlock(Net):
                 ("conv1/relu", nn.ReLU(inplace=True)),
                 (
                     "conv2/pad",
-                    TFSamepaddingLayer(
-                        ksize=unit_ksize[1], stride=stride if idx == 0 else 1
-                    ),
+                    TFSamepaddingLayer(ksize=unit_ksize[1], stride=stride if idx == 0 else 1),
                 ),
                 (
                     "conv2",
@@ -253,7 +252,7 @@ class ResidualBlock(Net):
         else:
             shortcut = self.shortcut(prev_feat)
 
-        for idx in range(0, len(self.units)):
+        for idx in range(len(self.units)):
             new_feat = prev_feat
             if self.training:
                 with torch.set_grad_enabled(not freeze):
@@ -268,7 +267,8 @@ class ResidualBlock(Net):
 
 ####
 class UpSample2x(nn.Module):
-    """Upsample input by a factor of 2.
+    """
+    Upsample input by a factor of 2.
 
     Assume input is of NCHW, port FixedUnpooling from TensorPack.
     """
@@ -276,9 +276,7 @@ class UpSample2x(nn.Module):
     def __init__(self):
         super(UpSample2x, self).__init__()
         # correct way to create constant within module
-        self.register_buffer(
-            "unpool_mat", torch.from_numpy(np.ones((2, 2), dtype="float32"))
-        )
+        self.register_buffer("unpool_mat", torch.from_numpy(np.ones((2, 2), dtype="float32")))
         self.unpool_mat.unsqueeze(0)
 
     def forward(self, x):
@@ -292,4 +290,3 @@ class UpSample2x(nn.Module):
         ret = ret.permute(0, 1, 2, 4, 3, 5)
         ret = ret.reshape((-1, input_shape[1], input_shape[2] * 2, input_shape[3] * 2))
         return ret
-
