@@ -140,7 +140,7 @@ class HACTBuilding:
 
         features = self.nuclei_feature_extractor.process(image, nuclei_map)
         graph = self.knn_graph_builder.process(nuclei_map, features)
-        self._save_nuclei_map(nuclei_centroids, image, graph, image_name)
+        #self._save_nuclei_map(nuclei_centroids, image, graph, image_name)
 
         return graph, nuclei_centroids
 

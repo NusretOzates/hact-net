@@ -12,6 +12,8 @@ from dataloader import make_data_loader
 from histocartography.ml import CellGraphModel, HACTModel, TissueGraphModel
 from sklearn.metrics import accuracy_score, classification_report, f1_score
 from tqdm import tqdm
+from lightning_model import HistoCartographyModel
+from custom_hactnet import CustomHACTNet
 
 # cuda support
 IS_CUDA = torch.cuda.is_available()
@@ -57,7 +59,7 @@ def main(args):
 
     # load config file
     with open(args.config_fpath) as f:
-        config = yaml.load(f)
+        config = yaml.load(f, Loader=yaml.FullLoader)
 
     # make test data loaders
     dataloader = make_data_loader(
@@ -75,7 +77,7 @@ def main(args):
             gnn_params=config["gnn_params"],
             classification_params=config["classification_params"],
             node_dim=NODE_DIM,
-            num_classes=7,
+            num_classes=3,
             pretrained=args.pretrained,
         ).to(DEVICE)
 
@@ -84,22 +86,25 @@ def main(args):
             gnn_params=config["gnn_params"],
             classification_params=config["classification_params"],
             node_dim=NODE_DIM,
-            num_classes=7,
+            num_classes=3,
             pretrained=args.pretrained,
         ).to(DEVICE)
 
     elif "bracs_hact" in args.config_fpath:
-        model = HACTModel(
+        model = CustomHACTNet(
             cg_gnn_params=config["cg_gnn_params"],
             tg_gnn_params=config["tg_gnn_params"],
             classification_params=config["classification_params"],
             cg_node_dim=NODE_DIM,
             tg_node_dim=NODE_DIM,
-            num_classes=7,
+            num_classes=3,
             pretrained=args.pretrained,
+            return_cell_graph_embedding=True
         ).to(DEVICE)
     else:
         raise ValueError("Model type not recognized. Options are: TG, CG or HACT.")
+
+    model = HistoCartographyModel(model=model, )
 
     # load weights if model path is provided.
     if not args.pretrained:
@@ -109,13 +114,15 @@ def main(args):
     # start testing
     all_test_logits = []
     all_test_labels = []
+    all_embeddings = []
     for batch in tqdm(dataloader, desc="Testing", unit="batch"):
         labels = batch[-1]
         data = batch[:-1]
         with torch.no_grad():
-            logits = model(*data)
+            logits, embedding = model(*data)
         all_test_logits.append(logits)
         all_test_labels.append(labels)
+        all_embeddings.extend(embedding.cpu().numpy())
 
     all_test_logits = torch.cat(all_test_logits).cpu()
     all_test_preds = torch.argmax(all_test_logits, dim=1)
@@ -131,6 +138,19 @@ def main(args):
     print(f"Test weighted F1 score {weighted_f1_score}")
     print(f"Test accuracy {accuracy}")
     print(f"Test classification report {report}")
+
+
+    import umap
+    import umap.plot
+    import matplotlib.pyplot as plt
+    import numpy as np
+
+    mapper = umap.UMAP(n_components=2, random_state=42).fit(np.array(all_embeddings))
+    p = umap.plot.points(mapper, labels=all_test_labels, theme="fire", color_key_cmap="Set1")
+    umap.plot.show(p)
+
+
+
 
 
 if __name__ == "__main__":
